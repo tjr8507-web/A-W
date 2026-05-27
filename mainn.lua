@@ -45,7 +45,6 @@ local Window = Fluent:CreateWindow({
     TabWidth    = 160,
     Size        = UDim2.fromOffset(580, 500),
     Acrylic     = false,
-    Theme       = "Sage",
     Theme       = "Amethyst",
     Minimizable = true
 })
@@ -76,8 +75,7 @@ local minimizeBox = Instance.new("Frame")
 minimizeBox.Name = "Box"
 minimizeBox.Size = UDim2.new(0, 30, 0, 100)
 minimizeBox.Position = UDim2.new(1, -35, 0.5, -50)
-minimizeBox.BackgroundColor3 = Color3.fromRGB(224, 90, 60)
-minimizeBox.BackgroundColor3 = Color3.fromRGB(155, 89, 182) -- Purple to match Amethyst
+minimizeBox.BackgroundColor3 = Color3.fromRGB(155, 89, 182)
 minimizeBox.BorderSizePixel = 0
 minimizeBox.Visible = false
 minimizeBox.Parent = minimizePlaceholder
@@ -85,7 +83,7 @@ local openBtn = Instance.new("TextButton")
 openBtn.Name = "OpenBtn"
 openBtn.Size = UDim2.new(1,0,1,0)
 openBtn.BackgroundTransparency = 0.2
-openBtn.Text = "▸"
+openBtn.Text = ">"
 openBtn.TextScaled = true
 openBtn.Parent = minimizeBox
 local function hideGui()
@@ -116,7 +114,9 @@ end
 local Tabs = {
     ESP      = Window:AddTab({ Title = "ESP",             Icon = "eye"        }),
     LOCK     = Window:AddTab({ Title = "Combat",          Icon = "crosshair"  }),
+    SPEED    = Window:AddTab({ Title = "Speed",           Icon = "timer"      }),
     FLING    = Window:AddTab({ Title = "Fling",           Icon = "zap"        }),
+    TELEPORT = Window:AddTab({ Title = "Teleport",        Icon = "map"        }),
     MISC     = Window:AddTab({ Title = "Misc",            Icon = "settings"   })
 }
 -- ==========================================
@@ -133,11 +133,11 @@ local gunDropESP_Enabled  = false
 local playerESP_Enabled   = false
 local coinESP_Enabled     = false
 local usernameESP_Enabled = false
-local silentAim_Enabled   = false
 local aimbot_Enabled      = false
 local noclipEnabled       = false
 local antiAfkEnabled      = false
 local antiAfkConn         = nil
+local currentWalkSpeed    = 16
 -- ==========================================
 -- CONNECTION REGISTRY
 -- ==========================================
@@ -317,7 +317,7 @@ local function addUsernameESP(player)
     local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
     if not humanoid or humanoid.Health <= 0 then return end
     if head:FindFirstChild(USERNAME_ESP_ID) then
-        head:FindFirstChild(USERNAME_ESP_ID):Destroy()
+        return
     end
     local bb = Instance.new("BillboardGui")
     bb.Name            = USERNAME_ESP_ID
@@ -327,7 +327,6 @@ local function addUsernameESP(player)
     bb.MaxDistance     = 200
     bb.ResetOnSpawn    = false
     bb.Parent          = head
-    
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name                   = "NameLabel"
     nameLabel.BackgroundTransparency = 1
@@ -340,7 +339,6 @@ local function addUsernameESP(player)
     nameLabel.Font                   = Enum.Font.GothamBold
     nameLabel.TextScaled             = true
     nameLabel.Parent                 = bb
-    
     local hpLabel = Instance.new("TextLabel")
     hpLabel.Name                   = "HpLabel"
     hpLabel.BackgroundTransparency = 1
@@ -353,7 +351,6 @@ local function addUsernameESP(player)
     hpLabel.Font                   = Enum.Font.Gotham
     hpLabel.TextScaled             = true
     hpLabel.Parent                 = bb
-    
     humanoid:GetPropertyChangedSignal("Health"):Connect(function()
         if hpLabel and hpLabel.Parent then
             local hp = math.floor(humanoid.Health)
@@ -376,9 +373,8 @@ end
 -- ==========================================
 -- AIMING LOGIC
 -- ==========================================
-local FOV_RADIUS        = 180
-local MAX_DISTANCE      = 250
-local PREDICTION_FACTOR = 0.95
+local FOV_RADIUS       = 180
+local MAX_DISTANCE     = 250
 local fovCircle        = Drawing.new("Circle")
 fovCircle.Visible      = false
 fovCircle.Color        = Color3.fromRGB(255, 255, 255)
@@ -387,8 +383,6 @@ fovCircle.NumSides     = 64
 fovCircle.Radius       = FOV_RADIUS
 fovCircle.Filled       = false
 fovCircle.Transparency = 0.5
-local lastTargetPos  = nil
-local lastTargetTime = nil
 local function getMousePosition()
     return UserInputService:GetMouseLocation()
 end
@@ -422,61 +416,6 @@ local function getNearestHeadInFOV()
     end
     return nearest
 end
-local function getSilentAimPosition()
-    local target = getNearestHeadInFOV()
-    if not target then
-        lastTargetPos  = nil
-        lastTargetTime = nil
-        return nil
-    end
-    local now         = tick()
-    local aimPosition = target.Position
-    if lastTargetPos and lastTargetTime then
-        local dt = now - lastTargetTime
-        if dt > 0 and dt < 0.5 then
-            local velocity = (target.Position - lastTargetPos) / dt
-            aimPosition    = target.Position + velocity * PREDICTION_FACTOR
-        end
-    end
-    lastTargetPos  = target.Position
-    lastTargetTime = now
-    return aimPosition
-end
-local mouseMetaHooked = false
-local originalIndex   = nil
-local function hookMouse()
-    if mouseMetaHooked then return end
-    mouseMetaHooked = true
-    local mt = getrawmetatable(mouse)
-    originalIndex = mt.__index
-    if setreadonly then setreadonly(mt, false) end
-    if make_writeable then make_writeable(mt) end
-    mt.__index = newcclosure(function(self, key)
-        if silentAim_Enabled and (key == "Hit" or key == "Target") then
-            local aimPos = getSilentAimPosition()
-            if aimPos then
-                if key == "Hit" then
-                    return CFrame.new(aimPos)
-                elseif key == "Target" then
-                    local head = getNearestHeadInFOV()
-                    if head then return head end
-                end
-            end
-        end
-        return originalIndex(self, key)
-    end)
-end
-local function unhookMouse()
-    if not mouseMetaHooked then return end
-    mouseMetaHooked = false
-    local mt = getrawmetatable(mouse)
-    if setreadonly then setreadonly(mt, false) end
-    if make_writeable then make_writeable(mt) end
-    if originalIndex then
-        mt.__index = originalIndex
-        originalIndex = nil
-    end
-end
 -- ==========================================
 -- NOCLIP
 -- ==========================================
@@ -501,10 +440,25 @@ local function disableNoclip()
     end
 end
 -- ==========================================
+-- SPEED LOGIC
+-- ==========================================
+track(RunService.Stepped:Connect(function()
+    if currentWalkSpeed > 16 then
+        local char = localPlayer.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.WalkSpeed = currentWalkSpeed
+            end
+        end
+    end
+end))
+-- ==========================================
 -- FLING PLAYER
 -- ==========================================
-local isFlingActive   = false
-local flingTargetName = ""
+local isFlingActive      = false
+local flingTargetName    = ""
+local viewTarget_Enabled = false
 local function findPlayerByName(name)
     name = string.lower(name)
     for _, player in ipairs(Players:GetPlayers()) do
@@ -538,24 +492,29 @@ local function flingPlayer(targetPlayer)
     local oldJumpPower   = myHum.JumpPower
     myHum.WalkSpeed  = 0
     myHum.JumpPower  = 0
+    local originalSubject = camera.CameraSubject
+    if viewTarget_Enabled then
+        local tHum = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if tHum then camera.CameraSubject = tHum end
+    end
     local startTime  = tick()
-    
     while isFlingActive and (tick() - startTime) < 2.5 do
         if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then break end
         if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then break end
         local tRoot = targetPlayer.Character.HumanoidRootPart
-        
-        myRoot.RotVelocity = Vector3.new(50000, 50000, 50000)
-        myRoot.Velocity = Vector3.new(math.random(-1000, 1000), 5000, math.random(-1000, 1000))
-        myRoot.CFrame = tRoot.CFrame
+        myRoot.CFrame = tRoot.CFrame * CFrame.new(math.random(-1, 1), 0, math.random(-1, 1))
+        myRoot.Velocity = Vector3.new(math.random(-5000, 5000), 5000, math.random(-5000, 5000))
+        myRoot.RotVelocity = Vector3.new(1000000, 1000000, 1000000)
         RunService.Heartbeat:Wait()
     end
-    
     isFlingActive = false
-    
+    if viewTarget_Enabled and originalSubject then
+        camera.CameraSubject = originalSubject
+    end
     if myRoot and myRoot.Parent then
         task.wait(0.05)
         myRoot.RotVelocity = Vector3.new(0, 0, 0)
+        myRoot.Velocity = Vector3.new(0, 0, 0)
     end
     if myHum and myHum.Parent then
         myHum.WalkSpeed = oldWalkSpeed
@@ -597,7 +556,7 @@ end))
 -- RENDER LOOP  (FOV circle + Camera Aimbot)
 -- ==========================================
 track(RunService.RenderStepped:Connect(function()
-    if not silentAim_Enabled and not aimbot_Enabled then
+    if not aimbot_Enabled then
         fovCircle.Visible = false
         return
     end
@@ -615,22 +574,40 @@ track(RunService.RenderStepped:Connect(function()
     end
 end))
 -- ==========================================
--- BACKGROUND ESP LOOP
+-- BACKGROUND ESP LOOP & EVENTS
 -- ==========================================
 local _espRunning = true
+local function updatePlayerESP(player)
+    if player == localPlayer then return end
+    pcall(function()
+        if playerESP_Enabled   then addHighlight(player)     end
+        if usernameESP_Enabled then addUsernameESP(player)   end
+    end)
+end
 task.spawn(function()
     while _espRunning do
         task.wait(0.5)
         for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= localPlayer then
-                if playerESP_Enabled   then addHighlight(player)     end
-                if usernameESP_Enabled then addUsernameESP(player)   end
-            end
+            updatePlayerESP(player)
         end
     end
 end)
+track(Players.PlayerAdded:Connect(function(player)
+    track(player.CharacterAdded:Connect(function()
+        task.wait(0.5)
+        updatePlayerESP(player)
+    end))
+end))
+for _, player in ipairs(Players:GetPlayers()) do
+    if player ~= localPlayer then
+        track(player.CharacterAdded:Connect(function()
+            task.wait(0.5)
+            updatePlayerESP(player)
+        end))
+    end
+end
 -- ==========================================
--- GUI TOGGLES — ESP Tab
+-- GUI TOGGLES - ESP Tab
 -- ==========================================
 Tabs.ESP:AddToggle("GunDropToggle", {Title = "Gun Drop ESP", Default = false}):OnChanged(function(value)
     gunDropESP_Enabled = value
@@ -650,43 +627,44 @@ Tabs.ESP:AddToggle("UsernameESPToggle", {Title = "Username ESP (Name + HP)", Def
         removeAllUsernameESP()
     else
         for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= localPlayer then addUsernameESP(player) end
+            if player ~= localPlayer then updatePlayerESP(player) end
         end
     end
 end)
 -- ==========================================
--- GUI TOGGLES — Combat Tab
+-- GUI TOGGLES - Combat Tab
 -- ==========================================
 aimbotToggleObj = Tabs.LOCK:AddToggle("AimbotToggle", {Title = "Camera Lock (Head) [F]", Default = false})
 aimbotToggleObj:OnChanged(function(value)
     aimbot_Enabled = value
-    if not silentAim_Enabled and not aimbot_Enabled then
-        fovCircle.Visible = false
-        lastTargetPos     = nil
-        lastTargetTime    = nil
-    end
+    if not aimbot_Enabled then fovCircle.Visible = false end
     local msg = value and "Enabled" or "Disabled"
     Fluent:Notify({ Title = "Camera Lock", Content = msg, Duration = 1 })
-end)
-Tabs.LOCK:AddToggle("SilentAimToggle", {Title = "Silent Aim (Head)", Default = false}):OnChanged(function(value)
-    silentAim_Enabled = value
-    if value then
-        hookMouse()
-    else
-        if not silentAim_Enabled and not aimbot_Enabled then
-            fovCircle.Visible = false
-            lastTargetPos     = nil
-            lastTargetTime    = nil
-        end
-    end
 end)
 Tabs.LOCK:AddToggle("NoclipToggle", {Title = "Noclip", Default = false}):OnChanged(function(value)
     noclipEnabled = value
     if value then enableNoclip() else disableNoclip() end
 end)
 -- ==========================================
--- GUI TOGGLES — Fling Tab
+-- GUI TOGGLES - Speed Tab
 -- ==========================================
+Tabs.SPEED:AddSlider("SpeedSlider", {
+    Title       = "Run Speed",
+    Description = "Change your movement speed",
+    Default     = 16,
+    Min         = 16,
+    Max         = 200,
+    Rounding    = 1,
+    Callback    = function(Value)
+        currentWalkSpeed = Value
+    end
+})
+-- ==========================================
+-- GUI TOGGLES - Fling Tab
+-- ==========================================
+Tabs.FLING:AddToggle("ViewTargetToggle", {Title = "View Target While Flinging", Default = false}):OnChanged(function(value)
+    viewTarget_Enabled = value
+end)
 local flingInput = Tabs.FLING:AddInput("FlingPlayerName", {
     Title       = "Player Name",
     Default     = "",
@@ -715,6 +693,40 @@ Tabs.FLING:AddButton({
     Callback = function()
         isFlingActive = false
         Fluent:Notify({ Title = "Fling", Content = "Fling stopped", Duration = 2 })
+    end
+})
+-- ==========================================
+-- GUI TOGGLES - Teleport Tab
+-- ==========================================
+local tpTargetName = ""
+local tpInput = Tabs.TELEPORT:AddInput("TpPlayerName", {
+    Title       = "Player Name",
+    Default     = "",
+    Placeholder = "Type player name...",
+    Numeric     = false
+})
+tpInput:OnChanged(function(value) tpTargetName = value end)
+Tabs.TELEPORT:AddButton({
+    Title = "Teleport To Player",
+    Callback = function()
+        if tpTargetName == "" then
+            Fluent:Notify({ Title = "Teleport", Content = "Enter a player name first!", Duration = 3 })
+            return
+        end
+        local target = findPlayerByName(tpTargetName)
+        if target then
+            if target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                local myChar = localPlayer.Character
+                if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+                    myChar.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                    Fluent:Notify({ Title = "Teleport", Content = "Teleported to " .. target.Name, Duration = 2 })
+                end
+            else
+                Fluent:Notify({ Title = "Teleport", Content = "Target hasn't spawned yet!", Duration = 3 })
+            end
+        else
+            Fluent:Notify({ Title = "Teleport", Content = "Player not found: " .. tpTargetName, Duration = 3 })
+        end
     end
 })
 -- ==========================================
@@ -769,13 +781,15 @@ Tabs.MISC:AddButton({
 _G.AWMM2_Cleanup = function()
     _espRunning   = false
     isFlingActive = false
+    local myHum = localPlayer.Character and localPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if camera.CameraSubject and myHum and camera.CameraSubject ~= myHum then
+        camera.CameraSubject = myHum
+    end
     for _, conn in ipairs(_connections) do pcall(function() conn:Disconnect() end) end
     _connections = {}
     for _, conn in ipairs(gunDropConnections) do pcall(function() conn:Disconnect() end) end
     gunDropConnections = {}
-    
     pcall(disableNoclip)
-    pcall(unhookMouse)
     if antiAfkConn then pcall(function() antiAfkConn:Disconnect() end) end
     pcall(disableGunDropESP)
     pcall(disableCoinESP)
@@ -793,6 +807,6 @@ end
 Window:SelectTab(1)
 Fluent:Notify({
     Title    = "A&W's MM2 HUB",
-    Content  = "Credits: aimxxz",
+    Content  = "Updates Loaded successfully",
     Duration = 5
 })
