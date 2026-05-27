@@ -46,6 +46,7 @@ local Window = Fluent:CreateWindow({
     Size        = UDim2.fromOffset(580, 500),
     Acrylic     = false,
     Theme       = "Sage",
+    Theme       = "Amethyst",
     Minimizable = true
 })
 local fluentGui = nil
@@ -75,7 +76,8 @@ local minimizeBox = Instance.new("Frame")
 minimizeBox.Name = "Box"
 minimizeBox.Size = UDim2.new(0, 30, 0, 100)
 minimizeBox.Position = UDim2.new(1, -35, 0.5, -50)
-minimizeBox.BackgroundColor3 = Color3.fromRGB(224, 90, 60) -- Calm orange-red
+minimizeBox.BackgroundColor3 = Color3.fromRGB(224, 90, 60)
+minimizeBox.BackgroundColor3 = Color3.fromRGB(155, 89, 182) -- Purple to match Amethyst
 minimizeBox.BorderSizePixel = 0
 minimizeBox.Visible = false
 minimizeBox.Parent = minimizePlaceholder
@@ -93,15 +95,12 @@ local function hideGui()
     end
 end
 openBtn.MouseButton1Click:Connect(function()
-    -- toggleUI is defined later; directly restore here and sync the flag
     if fluentGui then
         fluentGui.Enabled = true
         minimizeBox.Visible = false
     end
-    -- The isMinimized flag is set later in the script; we access it via _G for the click handler
     _G._AWMM2_Minimized = false
 end)
--- Listen for Fluent minimize (if supported)
 if Window.MinimizedChanged then
     Window.MinimizedChanged:Connect(function(isMinimized)
         if isMinimized then
@@ -118,7 +117,6 @@ local Tabs = {
     ESP      = Window:AddTab({ Title = "ESP",             Icon = "eye"        }),
     LOCK     = Window:AddTab({ Title = "Combat",          Icon = "crosshair"  }),
     FLING    = Window:AddTab({ Title = "Fling",           Icon = "zap"        }),
-    ROLLBACK = Window:AddTab({ Title = "Rollback(Undone)", Icon = "refresh-cw" }),
     MISC     = Window:AddTab({ Title = "Misc",            Icon = "settings"   })
 }
 -- ==========================================
@@ -266,11 +264,6 @@ end
 local function enableCoinESP()
     local container = Workspace:FindFirstChild("Normal")
     if container then watchForCoins(container) else watchForCoins(Workspace) end
-    if container then
-        watchForCoins(container)
-    else
-        watchForCoins(Workspace)
-    end
 end
 local function disableCoinESP()
     for _, conn in ipairs(coinConnections) do conn:Disconnect() end
@@ -317,14 +310,12 @@ local function removeAllPlayerESP()
         end
     end
 end
--- Username ESP: BillboardGui above the head showing name + health
 local function addUsernameESP(player)
     if not player.Character then return end
     local head = player.Character:FindFirstChild("Head")
     if not head then return end
     local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
     if not humanoid or humanoid.Health <= 0 then return end
-    -- Remove stale one if it exists
     if head:FindFirstChild(USERNAME_ESP_ID) then
         head:FindFirstChild(USERNAME_ESP_ID):Destroy()
     end
@@ -336,7 +327,7 @@ local function addUsernameESP(player)
     bb.MaxDistance     = 200
     bb.ResetOnSpawn    = false
     bb.Parent          = head
-    -- Name label
+    
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name                   = "NameLabel"
     nameLabel.BackgroundTransparency = 1
@@ -349,7 +340,7 @@ local function addUsernameESP(player)
     nameLabel.Font                   = Enum.Font.GothamBold
     nameLabel.TextScaled             = true
     nameLabel.Parent                 = bb
-    -- Health label
+    
     local hpLabel = Instance.new("TextLabel")
     hpLabel.Name                   = "HpLabel"
     hpLabel.BackgroundTransparency = 1
@@ -362,12 +353,11 @@ local function addUsernameESP(player)
     hpLabel.Font                   = Enum.Font.Gotham
     hpLabel.TextScaled             = true
     hpLabel.Parent                 = bb
-    -- Live update health
+    
     humanoid:GetPropertyChangedSignal("Health"):Connect(function()
         if hpLabel and hpLabel.Parent then
             local hp = math.floor(humanoid.Health)
             hpLabel.Text = "HP: " .. hp .. "/" .. math.floor(humanoid.MaxHealth)
-            -- Colour shifts red as HP drops
             local ratio = math.clamp(hp / humanoid.MaxHealth, 0, 1)
             hpLabel.TextColor3 = Color3.fromRGB(255 * (1 - ratio), 255 * ratio, 0)
         end
@@ -511,7 +501,7 @@ local function disableNoclip()
     end
 end
 -- ==========================================
--- FLING PLAYER  (STRONGER)
+-- FLING PLAYER
 -- ==========================================
 local isFlingActive   = false
 local flingTargetName = ""
@@ -549,24 +539,20 @@ local function flingPlayer(targetPlayer)
     myHum.WalkSpeed  = 0
     myHum.JumpPower  = 0
     local startTime  = tick()
-    -- Phase 2: Active Fling — Massive RotVelocity + teleporting inside them
+    
     while isFlingActive and (tick() - startTime) < 2.5 do
         if not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then break end
         if not myChar or not myChar:FindFirstChild("HumanoidRootPart") then break end
         local tRoot = targetPlayer.Character.HumanoidRootPart
         
-        -- High rotational velocity is what actually causes the physics engine to fling them upon collision
         myRoot.RotVelocity = Vector3.new(50000, 50000, 50000)
-        -- Add erratic velocity to bounce around inside them
         myRoot.Velocity = Vector3.new(math.random(-1000, 1000), 5000, math.random(-1000, 1000))
-        
-        -- Stick directly to their core
         myRoot.CFrame = tRoot.CFrame
         RunService.Heartbeat:Wait()
     end
-    -- Phase 3: Release
+    
     isFlingActive = false
-    -- Cleanup
+    
     if myRoot and myRoot.Parent then
         task.wait(0.05)
         myRoot.RotVelocity = Vector3.new(0, 0, 0)
@@ -578,20 +564,18 @@ local function flingPlayer(targetPlayer)
     Fluent:Notify({ Title = "Fling", Content = "Fling complete!", Duration = 2 })
 end
 -- ==========================================
--- UI MINIMIZE / RESTORE TOGGLE  (V Key)
+-- UI MINIMIZE / RESTORE TOGGLE
 -- ==========================================
 local isMinimized   = false
 local UI_TOGGLE_KEY = Enum.KeyCode.V
 local function toggleUI()
     isMinimized = not isMinimized
     if isMinimized then
-        -- Hide main GUI, show the small box on the right
         if fluentGui and fluentGui.Parent then
             fluentGui.Enabled = false
         end
         minimizeBox.Visible = true
     else
-        -- Show main GUI, hide the box
         if fluentGui and fluentGui.Parent then
             fluentGui.Enabled = true
         end
@@ -651,32 +635,20 @@ end)
 Tabs.ESP:AddToggle("GunDropToggle", {Title = "Gun Drop ESP", Default = false}):OnChanged(function(value)
     gunDropESP_Enabled = value
     if value then enableGunDropESP() else disableGunDropESP() end
-    if value then
-        enableGunDropESP()
-    else
-        disableGunDropESP()
-    end
 end)
 Tabs.ESP:AddToggle("CoinESPToggle", {Title = "Coin ESP", Default = false}):OnChanged(function(value)
     coinESP_Enabled = value
     if value then enableCoinESP() else disableCoinESP() end
-    if value then
-        enableCoinESP()
-    else
-        disableCoinESP()
-    end
 end)
 Tabs.ESP:AddToggle("PlayerESPToggle", {Title = "Player ESP (Highlight)", Default = false}):OnChanged(function(value)
     playerESP_Enabled = value
     if not value then removeAllPlayerESP() end
 end)
--- NEW: Username ESP toggle
 Tabs.ESP:AddToggle("UsernameESPToggle", {Title = "Username ESP (Name + HP)", Default = false}):OnChanged(function(value)
     usernameESP_Enabled = value
     if not value then
         removeAllUsernameESP()
     else
-        -- Apply immediately to all current players
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= localPlayer then addUsernameESP(player) end
         end
@@ -711,11 +683,6 @@ end)
 Tabs.LOCK:AddToggle("NoclipToggle", {Title = "Noclip", Default = false}):OnChanged(function(value)
     noclipEnabled = value
     if value then enableNoclip() else disableNoclip() end
-    if value then
-        enableNoclip()
-    else
-        disableNoclip()
-    end
 end)
 -- ==========================================
 -- GUI TOGGLES — Fling Tab
@@ -737,11 +704,6 @@ Tabs.FLING:AddButton({
         local target = findPlayerByName(flingTargetName)
         if target then
             task.spawn(function() flingPlayer(target) end)
-        if target ~= nil then
-            local t = target
-            task.spawn(function()
-                flingPlayer(t)
-            end)
         else
             local msg = "Player not found: " .. flingTargetName
             Fluent:Notify({ Title = "Fling", Content = msg, Duration = 3 })
@@ -755,51 +717,6 @@ Tabs.FLING:AddButton({
         Fluent:Notify({ Title = "Fling", Content = "Fling stopped", Duration = 2 })
     end
 })
--- ==========================================
--- ROLLBACK / DUPE TAB
--- ==========================================
-local isDupeFlooding    = false
-local dupeFloodConnection = nil
-Tabs.ROLLBACK:AddParagraph({
-    Title   = "How to Dupe / Freeze Save",
-    Content = "1. Enable 'Freeze Save'\n2. Wait 2-3 seconds for DataStore queues to fill\n3. Drop/Trade your weapon to an alt account\n4. Leave the game immediately.\nWhen you rejoin, the server will load your previous save since the remote flooded."
-})
-local SAVE_REMOTE_NAME   = "SaveData"
-local UPDATE_REMOTE_NAME = "UpdateInventory"
-Tabs.ROLLBACK:AddInput("SaveRemoteName", {
-    Title       = "Save RemoteEvent Name",
-    Default     = SAVE_REMOTE_NAME,
-    Placeholder = "e.g. ChangeProfileData",
-    Numeric     = false
-}):OnChanged(function(value) SAVE_REMOTE_NAME = value end)
-local ToggleDupe = Tabs.ROLLBACK:AddToggle("DupeFloodToggle", {Title = "Enable Freeze Save (Spam Remotes)", Default = false})
-ToggleDupe:OnChanged(function(value)
-    isDupeFlooding = value
-    if isDupeFlooding then
-        local RS = game:GetService("ReplicatedStorage")
-        dupeFloodConnection = RunService.Heartbeat:Connect(function()
-            local saveRemote   = RS:FindFirstChild(SAVE_REMOTE_NAME, true)
-            local updateRemote = RS:FindFirstChild(UPDATE_REMOTE_NAME, true)
-            if saveRemote and saveRemote:IsA("RemoteEvent") then
-                saveRemote:FireServer("FreezeSpam")
-            end
-            if updateRemote and updateRemote:IsA("RemoteEvent") then
-                local brokenData = {}
-                brokenData["NaN_Exploit"] = math.huge * 0
-                brokenData["HugeString"]  = string.rep("A", 50000)
-                updateRemote:FireServer(brokenData)
-            end
-        end)
-        local msg = "Flooding " .. SAVE_REMOTE_NAME .. ". Drop your items now!"
-        Fluent:Notify({ Title = "Save Frozen", Content = msg, Duration = 3 })
-    else
-        if dupeFloodConnection then
-            dupeFloodConnection:Disconnect()
-            dupeFloodConnection = nil
-        end
-        Fluent:Notify({ Title = "Save Frozen", Content = "Spamming stopped.", Duration = 2 })
-    end
-end)
 -- ==========================================
 -- MISC TAB
 -- ==========================================
@@ -847,7 +764,7 @@ Tabs.MISC:AddButton({
     end
 })
 -- ==========================================
--- CLEANUP  (registered for next run)
+-- CLEANUP
 -- ==========================================
 _G.AWMM2_Cleanup = function()
     _espRunning   = false
@@ -856,7 +773,7 @@ _G.AWMM2_Cleanup = function()
     _connections = {}
     for _, conn in ipairs(gunDropConnections) do pcall(function() conn:Disconnect() end) end
     gunDropConnections = {}
-    if dupeFloodConnection then pcall(function() dupeFloodConnection:Disconnect() end) end
+    
     pcall(disableNoclip)
     pcall(unhookMouse)
     if antiAfkConn then pcall(function() antiAfkConn:Disconnect() end) end
